@@ -4,9 +4,9 @@ import aiohttp
 import os
 from dotenv import load_dotenv
 from collections import Counter
-import pypokedex  # The new library for type data
+import pypokedex  
 
-# --- 1. SETUP & CONFIGURATION ---
+#SETUP & CONFIGURATION
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
@@ -16,9 +16,6 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 bot.remove_command('help')
 
-# --- 2. STATIC DATA (TYPE CHART) ---
-# Maps Attacking Type -> Defending Types it is Super Effective against (Weaknesses)
-# and Types that Resist it.
 TYPE_INTERACTIONS = {
     "Normal":   {"weak": ["Rock", "Steel"], "resist": ["Ghost"]},
     "Fire":     {"weak": ["Fire", "Water", "Rock", "Dragon"], "resist": ["Grass", "Ice", "Bug", "Steel"]},
@@ -40,14 +37,10 @@ TYPE_INTERACTIONS = {
     "Fairy":    {"weak": ["Fire", "Poison", "Steel"], "resist": ["Fighting", "Dragon", "Dark"]}
 }
 
-# Cache to prevent spamming the API
 POKE_CACHE = {}
-
-# --- 3. HELPER UTILITIES ---
 
 def get_pokemon_types(name):
     """Fetches types from pypokedex or cache."""
-    # Clean name (Showdown uses 'Urshifu-*' etc., pypokedex needs clean names)
     clean_name = name.split('-')[0].lower().replace(" ", "-")
     
     if clean_name in POKE_CACHE:
@@ -59,54 +52,27 @@ def get_pokemon_types(name):
         POKE_CACHE[clean_name] = types
         return types
     except:
-        return [] # Return empty if not found/error
+        return [] 
 
 def calculate_weakness_score(opponent_types, anchor_types):
     """
     Calculates the W factor based on type interaction.
     """
     score = 0
-    # Loop through Opponent's types (Attacking)
     for o_type in opponent_types:
         if o_type not in TYPE_INTERACTIONS: continue
         
-        # 1. Offensive Threat: Does Opponent hit Anchor for Super Effective?
-        # (Check if Anchor's types are in Opponent's "Resist" list... wait, no.)
-        # Logic: If 'Water' (Opponent) hits 'Fire' (Anchor). 
-        # We need to know if Anchor is WEAK to O_type.
-        # Simplification: We check standard matchups manually or use a library. 
-        # For this bot, we use the TYPE_INTERACTIONS dictionary logic:
-        # Dictionary format above is: Attacker -> {Types that resist it}, NOT weaknesses.
-        # Let's flip the logic for the simplified formula provided earlier.
-        
-        # OFFENSIVE CHECK: Can Opponent hurt Anchor?
-        # If Anchor type is in the Opponent's "Effective" scope.
-        # To keep it simple and robust without a 1000-line chart:
-        # We assume standard chart.
         pass
 
-    # REVISED SIMPLE LOOKUP for the user's requested logic
-    # Interaction 1: Opponent Hits Anchor (Vulnerability) -> Score +10
-    # Interaction 2: Anchor Hits Opponent (Wall) -> Score +5
-    # Interaction 3: Anchor Resists Opponent (Mitigation) -> Score -5
-    
-    # We will use a simplified check function for standard effectiveness
     for a_type in anchor_types:
         for o_type in opponent_types:
-            # Check 1: Opponent (Atk) vs Anchor (Def)
             if is_super_effective(o_type, a_type): score += 10
             if is_resisted(o_type, a_type): score -= 5
-            
-            # Check 2: Anchor (Atk) vs Opponent (Def) - The "Wall" check
             if is_resisted(a_type, o_type): score += 5
             
     return score
 
 def is_super_effective(atk_type, def_type):
-    # Retrieve what the attacker is RESISTED by from our dict
-    # Note: A full SE chart is large. For this snippet, we'll use the 'resist' key inversely 
-    # or rely on the logic that "Fire" is resisted by "Water".
-    # For accuracy, let's just define the SE list for the Attacker.
     SE_MAP = {
         "Fire": ["Grass", "Ice", "Bug", "Steel"],
         "Water": ["Fire", "Ground", "Rock"],
@@ -129,7 +95,6 @@ def is_super_effective(atk_type, def_type):
     return def_type in SE_MAP.get(atk_type, [])
 
 def is_resisted(atk_type, def_type):
-    # Returns true if def_type resists atk_type
     if atk_type in TYPE_INTERACTIONS:
         return def_type in TYPE_INTERACTIONS[atk_type]["resist"]
     return False
@@ -150,7 +115,7 @@ async def fetch_log(session, url):
         if response.status != 200: return None
         return await response.text()
 
-# --- 4. CORE ANALYTICS ENGINE ---
+#CORE ANALYTICS ENGINE
 
 def parse_replay_logic(log_text):
     stats = {
@@ -207,7 +172,7 @@ def parse_replay_logic(log_text):
         elif cmd == 'win': stats["winner"] = p[2]
     return stats
 
-# --- 5. EVENTS & COMMANDS ---
+#EVENTS & COMMANDS
 
 @bot.event
 async def on_ready():
@@ -257,8 +222,6 @@ async def profile(ctx, username: str, *links):
     wins, total_turns = 0, 0
     presence_all, total_dmg_all, match_apps = Counter(), Counter(), Counter()
     synergy_all = {}
-    
-    # Nemesis Data: Stores {OpponentName: {'dmg': 0, 'turns': 0}}
     nemesis_data = {} 
 
     async with aiohttp.ClientSession() as session:
@@ -275,13 +238,10 @@ async def profile(ctx, username: str, *links):
             if is_win: 
                 wins += 1
             else:
-                # LOSS ANALYSIS: Record opponent stats for Nemesis calculation
                 opp_side = "p2" if side == "p1" else "p1"
                 for mon in res[opp_side]["mons"]:
                     if mon not in nemesis_data: nemesis_data[mon] = {'dmg': 0, 'turns': 0}
-                    # Add their presence
                     nemesis_data[mon]['turns'] += res[opp_side]["presence"][mon]
-                    # Add their damage (if any)
                     nemesis_data[mon]['dmg'] += res[opp_side]["dmg_map"][mon]
 
             presence_all.update(res[side]["presence"])
@@ -294,12 +254,12 @@ async def profile(ctx, username: str, *links):
                 synergy_all[pair]['turns'] += data['turns']
                 if is_win: synergy_all[pair]['wins'] += 1
 
-    # --- RESULTS ---
+    # RESULTS
     embed = discord.Embed(title=f"Career Profile: {username}", color=0x9b59b6)
     embed.add_field(name="Performance", value=f"📈 **Win Rate:** {round((wins/len(links))*100,1)}%\n🏆 **Record:** {wins}W - {len(links)-wins}L", inline=True)
     embed.add_field(name="Pace", value=f"⏳ **Avg Match:** {round(total_turns/len(links), 1)} turns", inline=True)
 
-    # 1. Anchors (Top 6)
+    # 1. Top 6
     top_6_anchors = [m[0] for m in presence_all.most_common(6)] # Get names only
     used_str = "\n".join([f"**{m}**: {presence_all[m]} turns" for m in top_6_anchors])
     embed.add_field(name="Top 6 Anchors", value=used_str or "N/A", inline=False)
@@ -313,25 +273,19 @@ async def profile(ctx, username: str, *links):
     # 3. Synergy
     if synergy_all:
         valid = [p for p in synergy_all.items() if p[1]['turns'] > 5]
-        # Formula: (Dmg/Turn) + (WinRate * 20)
         def syn_score(x): return (x[1]['dmg']/x[1]['turns']) + ((x[1]['wins']/len(links))*20)
         sorted_pairs = sorted(valid, key=syn_score, reverse=True)[:3]
         pair_str = "\n".join([f"**{p[0][0]} + {p[0][1]}** (Score: {round(syn_score(p),1)})" for p in sorted_pairs])
         if pair_str: embed.add_field(name="Top Synergy Pairs", value=pair_str, inline=False)
 
-    # 4. NEMESIS / THREAT INDEX (The new Logic)
-    # Calculate Threat Score T = (D*0.25) + (P*0.25) + (W*0.5)
     threat_list = []
     
-    # Pre-fetch Anchor types once
     anchor_types_map = {anc: get_pokemon_types(anc) for anc in top_6_anchors}
     
     for mon, stats in nemesis_data.items():
         D = stats['dmg']
         P = stats['turns']
         
-        # Calculate W (Weakness Factor)
-        # Fetch Opponent Types
         opp_types = get_pokemon_types(mon)
         W = 0
         if opp_types:
@@ -339,16 +293,13 @@ async def profile(ctx, username: str, *links):
                 if anc_types:
                     W += calculate_weakness_score(opp_types, anc_types)
         
-        # Final Formula
         T = (D * 0.25) + (P * 0.25) + (W * 0.50)
         threat_list.append((mon, T, W))
 
-    # Sort by T score
     top_threats = sorted(threat_list, key=lambda x: x[1], reverse=True)[:3]
     
     nemesis_display = []
     for t in top_threats:
-        # Check if W was the main driver
         reason = "High Damage"
         if t[2] > 20: reason = "Type Advantage (Core Breaker)"
         elif t[2] > 10: reason = "Offensive Pressure"
